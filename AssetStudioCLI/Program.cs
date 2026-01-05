@@ -13,19 +13,20 @@ namespace AssetStudioCLI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: AssetStudioCLI <input_file> <output_directory> [--verbose]");
+                Console.WriteLine("Usage: AssetStudioCLI <input_path> <output_directory> [--verbose]");
+                Console.WriteLine("  input_path: File or directory to process");
                 Console.WriteLine("Example: AssetStudioCLI myasset.unity3d C:\\output");
-                Console.WriteLine("        AssetStudioCLI myasset.unity3d C:\\output --verbose");
+                Console.WriteLine("         AssetStudioCLI C:\\assets C:\\output --verbose");
                 return;
             }
 
-            string inputFile = args[0];
+            string inputPath = args[0];
             string outputDir = args[1];
             bool verbose = args.Length > 2 && (args[2] == "--verbose" || args[2] == "-v");
 
-            if (!File.Exists(inputFile))
+            if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
             {
-                Console.WriteLine($"Error: Input file '{inputFile}' does not exist.");
+                Console.WriteLine($"Error: Input path '{inputPath}' does not exist.");
                 return;
             }
 
@@ -37,15 +38,77 @@ namespace AssetStudioCLI
 
             try
             {
-                // Create AssetsManager and load the file
-                var manager = new AssetsManager();
-                Console.WriteLine($"Loading file: {inputFile}");
-                manager.LoadFiles(inputFile);
-
-                // Generate output file path
-                string outputFile = Path.Combine(outputDir, "asset_info.txt");
+                List<string> filesToProcess = new List<string>();
                 
-                using (StreamWriter writer = new StreamWriter(outputFile, false, Encoding.UTF8))
+                // Determine if input is a file or directory
+                if (Directory.Exists(inputPath))
+                {
+                    Console.WriteLine($"Scanning directory: {inputPath}");
+                    filesToProcess = Directory.GetFiles(inputPath, "*", SearchOption.AllDirectories).ToList();
+                    Console.WriteLine($"Found {filesToProcess.Count} files to process.");
+                }
+                else
+                {
+                    filesToProcess.Add(inputPath);
+                }
+
+                int processedCount = 0;
+                int failedCount = 0;
+
+                foreach (var file in filesToProcess)
+                {
+                    try
+                    {
+                        ProcessFile(file, outputDir, verbose, inputPath);
+                        processedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error processing {file}: {ex.Message}");
+                        failedCount++;
+                    }
+                }
+
+                Console.WriteLine();
+                Console.WriteLine($"Processing complete!");
+                Console.WriteLine($"Successfully processed: {processedCount}");
+                Console.WriteLine($"Failed: {failedCount}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        static void ProcessFile(string inputFile, string outputDir, bool verbose, string basePath)
+        {
+            // Create AssetsManager and load the file
+            var manager = new AssetsManager();
+            Console.WriteLine($"Loading file: {inputFile}");
+            manager.LoadFiles(inputFile);
+
+            // Skip if no assets were loaded
+            if (manager.assetsFileList.Count == 0)
+            {
+                Console.WriteLine($"  Skipped (no assets found)");
+                manager.Clear();
+                return;
+            }
+
+            // Generate output file path based on input file structure
+            string relativePath = Path.GetRelativePath(Path.GetDirectoryName(basePath) ?? basePath, inputFile);
+            string outputFileName = Path.GetFileNameWithoutExtension(inputFile) + "_info.txt";
+            string outputSubDir = Path.Combine(outputDir, Path.GetDirectoryName(relativePath) ?? "");
+            
+            if (!Directory.Exists(outputSubDir))
+            {
+                Directory.CreateDirectory(outputSubDir);
+            }
+            
+            string outputFile = Path.Combine(outputSubDir, outputFileName);
+            
+            using (StreamWriter writer = new StreamWriter(outputFile, false, Encoding.UTF8))
                 {
                     if (verbose)
                     {
@@ -169,19 +232,6 @@ namespace AssetStudioCLI
                                 writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
                                 writer.WriteLine();
                             }
-
-                            if (verbose)
-                            {
-                                writer.WriteLine("=".PadRight(80, '='));
-                                writer.WriteLine("End of Report");
-                                writer.WriteLine("=".PadRight(80, '='));
-                            }
-
-                            if (assetsFile.Objects.Count > 100)
-                            {
-                                writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
-                                writer.WriteLine();
-                            }
                         }
                     }
 
@@ -193,18 +243,11 @@ namespace AssetStudioCLI
                     }
                 }
 
-                Console.WriteLine($"Successfully wrote asset information to: {outputFile}");
-                Console.WriteLine($"Total assets files processed: {manager.assetsFileList.Count}");
-                Console.WriteLine($"Total objects found: {manager.assetsFileList.Sum(f => f.Objects.Count)}");
+                Console.WriteLine($"  Written to: {outputFile}");
+                Console.WriteLine($"  Assets files: {manager.assetsFileList.Count}, Total objects: {manager.assetsFileList.Sum(f => f.Objects.Count)}");
 
                 // Cleanup
                 manager.Clear();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error processing file: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-            }
         }
         
 
