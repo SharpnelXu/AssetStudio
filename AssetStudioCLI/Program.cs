@@ -13,16 +13,20 @@ namespace AssetStudioCLI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: AssetStudioCLI <input_path> <output_directory> [--verbose]");
+                Console.WriteLine("Usage: AssetStudioCLI <input_path> <output_directory> [--verbose] [--keep-hierarchy]");
                 Console.WriteLine("  input_path: File or directory to process");
+                Console.WriteLine("  --verbose: Show detailed information");
+                Console.WriteLine("  --keep-hierarchy: Create separate files for each asset (default: false)");
                 Console.WriteLine("Example: AssetStudioCLI myasset.unity3d C:\\output");
                 Console.WriteLine("         AssetStudioCLI C:\\assets C:\\output --verbose");
+                Console.WriteLine("         AssetStudioCLI C:\\assets C:\\output --keep-hierarchy");
                 return;
             }
 
             string inputPath = args[0];
             string outputDir = args[1];
-            bool verbose = args.Length > 2 && (args[2] == "--verbose" || args[2] == "-v");
+            bool verbose = args.Any(a => a == "--verbose" || a == "-v");
+            bool keepHierarchy = args.Any(a => a == "--keep-hierarchy " || a == "-k");
 
             if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
             {
@@ -35,6 +39,8 @@ namespace AssetStudioCLI
                 Directory.CreateDirectory(outputDir);
                 Console.WriteLine($"Created output directory: {outputDir}");
             }
+
+            Console.WriteLine("Starting processing... Mode: " + (keepHierarchy ? "Keep Hierarchy" : "Single File") + (verbose ? " with Verbose" : ""));
 
             try
             {
@@ -54,19 +60,34 @@ namespace AssetStudioCLI
 
                 int processedCount = 0;
                 int failedCount = 0;
+                StreamWriter singleWriter = null;
 
-                foreach (var file in filesToProcess)
+                if (!keepHierarchy)
                 {
-                    try
+                    string singleOutputFile = Path.Combine(outputDir, "asset-info.txt");
+                    singleWriter = new StreamWriter(singleOutputFile, false, Encoding.UTF8);
+                    Console.WriteLine($"Writing all output to: {singleOutputFile}");
+                }
+
+                try
+                {
+                    foreach (var file in filesToProcess)
                     {
-                        ProcessFile(file, outputDir, verbose, inputPath);
-                        processedCount++;
+                        try
+                        {
+                            ProcessFile(file, outputDir, verbose, inputPath, keepHierarchy, singleWriter);
+                            processedCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error processing {file}: {ex.Message}");
+                            failedCount++;
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error processing {file}: {ex.Message}");
-                        failedCount++;
-                    }
+                }
+                finally
+                {
+                    singleWriter?.Dispose();
                 }
 
                 Console.WriteLine();
@@ -81,7 +102,7 @@ namespace AssetStudioCLI
             }
         }
 
-        static void ProcessFile(string inputFile, string outputDir, bool verbose, string basePath)
+        static void ProcessFile(string inputFile, string outputDir, bool verbose, string basePath, bool keepHierarchy, StreamWriter singleWriter)
         {
             // Create AssetsManager and load the file
             var manager = new AssetsManager();
@@ -96,85 +117,95 @@ namespace AssetStudioCLI
                 return;
             }
 
-            // Generate output file path based on input file structure
-            string relativePath = Path.GetRelativePath(Path.GetDirectoryName(basePath) ?? basePath, inputFile);
-            string outputFileName = Path.GetFileNameWithoutExtension(inputFile) + "_info.txt";
-            string outputSubDir = Path.Combine(outputDir, Path.GetDirectoryName(relativePath) ?? "");
-            
-            if (!Directory.Exists(outputSubDir))
+            StreamWriter writer;
+            string outputFile = null;
+
+            if (keepHierarchy)
             {
-                Directory.CreateDirectory(outputSubDir);
-            }
-            
-            string outputFile = Path.Combine(outputSubDir, outputFileName);
-            
-            using (StreamWriter writer = new StreamWriter(outputFile, false, Encoding.UTF8))
+                // Generate output file path based on input file structure
+                string relativePath = Path.GetRelativePath(Path.GetDirectoryName(basePath) ?? basePath, inputFile);
+                string outputFileName = Path.GetFileNameWithoutExtension(inputFile) + "_info.txt";
+                string outputSubDir = Path.Combine(outputDir, Path.GetDirectoryName(relativePath) ?? "");
+                
+                if (!Directory.Exists(outputSubDir))
                 {
+                    Directory.CreateDirectory(outputSubDir);
+                }
+                
+                outputFile = Path.Combine(outputSubDir, outputFileName);
+                writer = new StreamWriter(outputFile, false, Encoding.UTF8);
+            }
+            else
+            {
+                writer = singleWriter;
+                writer.WriteLine("\n" + "=".PadRight(80, '='));
+                writer.WriteLine($"FILE: {inputFile}");
+                writer.WriteLine("=".PadRight(80, '=') + "\n");
+            }
+
+            try
+            {
+                if (verbose)
+                {
+                    writer.WriteLine("=".PadRight(80, '='));
+                    writer.WriteLine("Asset Studio - File Information");
+                    writer.WriteLine("=".PadRight(80, '='));
+                    writer.WriteLine($"Input File: {inputFile}");
+                    writer.WriteLine($"Generated: {DateTime.Now}");
+                    writer.WriteLine("=".PadRight(80, '='));
+                    writer.WriteLine();
+
+                    // Print information about loaded assets files
+                    writer.WriteLine($"Total Assets Files Loaded: {manager.assetsFileList.Count}");
+                    writer.WriteLine();
+                }
+
+                foreach (var assetsFile in manager.assetsFileList)
+                {
+                    
+                    writer.WriteLine($"Assets File: {assetsFile.fileName}");
+                    
                     if (verbose)
                     {
-                        writer.WriteLine("=".PadRight(80, '='));
-                        writer.WriteLine("Asset Studio - File Information");
-                        writer.WriteLine("=".PadRight(80, '='));
-                        writer.WriteLine($"Input File: {inputFile}");
-                        writer.WriteLine($"Generated: {DateTime.Now}");
-                        writer.WriteLine("=".PadRight(80, '='));
+                        writer.WriteLine($"Original Path: {assetsFile.originalPath}");
+                        writer.WriteLine($"Full Path: {assetsFile.fullName}");
+                        writer.WriteLine($"Unity Version: {assetsFile.unityVersion}");
+                        writer.WriteLine($"Version: {assetsFile.version}");
+                        writer.WriteLine($"Platform: {assetsFile.m_TargetPlatform}");
+                        writer.WriteLine($"Total Objects: {assetsFile.Objects.Count}");
                         writer.WriteLine();
 
-                        // Print information about loaded assets files
-                        writer.WriteLine($"Total Assets Files Loaded: {manager.assetsFileList.Count}");
+                        // Group objects by type
+                        var objectsByType = assetsFile.Objects
+                            .GroupBy(o => o.type)
+                            .OrderByDescending(g => g.Count());
+
+                        writer.WriteLine("Object Types:");
+                        foreach (var group in objectsByType)
+                        {
+                            writer.WriteLine($"  {group.Key,-30} Count: {group.Count()}");
+                        }
                         writer.WriteLine();
                     }
+                    writer.WriteLine();
 
-                    foreach (var assetsFile in manager.assetsFileList)
+                    // Print GameObject hierarchy
+                    writer.WriteLine("GameObject Hierarchy:");
+                    writer.WriteLine();
+                    PrintGameObjectHierarchy(assetsFile, writer);
+                    writer.WriteLine();
+
+                    if (verbose)
                     {
-                        if (verbose)
-                        {
-                            writer.WriteLine("-".PadRight(80, '-'));
-                        }
-                        
-                        writer.WriteLine($"Assets File: {assetsFile.fileName}");
-                        writer.WriteLine($"Original Path: {assetsFile.originalPath}");
-                        
-                        if (verbose)
-                        {
-                            writer.WriteLine($"Full Path: {assetsFile.fullName}");
-                            writer.WriteLine($"Unity Version: {assetsFile.unityVersion}");
-                            writer.WriteLine($"Version: {assetsFile.version}");
-                            writer.WriteLine($"Platform: {assetsFile.m_TargetPlatform}");
-                            writer.WriteLine($"Total Objects: {assetsFile.Objects.Count}");
-                            writer.WriteLine();
-
-                            // Group objects by type
-                            var objectsByType = assetsFile.Objects
-                                .GroupBy(o => o.type)
-                                .OrderByDescending(g => g.Count());
-
-                            writer.WriteLine("Object Types:");
-                            foreach (var group in objectsByType)
-                            {
-                                writer.WriteLine($"  {group.Key,-30} Count: {group.Count()}");
-                            }
-                            writer.WriteLine();
-                        }
+                        writer.WriteLine("Detailed Object Information:");
                         writer.WriteLine();
 
-                        // Print GameObject hierarchy
-                        writer.WriteLine("GameObject Hierarchy:");
-                        writer.WriteLine();
-                        PrintGameObjectHierarchy(assetsFile, writer);
-                        writer.WriteLine();
-
-                        if (verbose)
+                        foreach (var obj in assetsFile.Objects)
                         {
-                            writer.WriteLine("Detailed Object Information:");
-                            writer.WriteLine();
-
-                            foreach (var obj in assetsFile.Objects)
-                            {
-                                writer.WriteLine($"  [{obj.type}] PathID: {obj.m_PathID}");
-                                
-                                // Add specific details based on object type
-                                switch (obj)
+                            writer.WriteLine($"  [{obj.type}] PathID: {obj.m_PathID}");
+                            
+                            // Add specific details based on object type
+                            switch (obj)
                                 {
                                     case Texture2D texture:
                                         writer.WriteLine($"    Name: {texture.m_Name}");
@@ -231,24 +262,37 @@ namespace AssetStudioCLI
                             {
                                 writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
                                 writer.WriteLine();
-                            }
                         }
-                    }
-
-                    if (verbose)
-                    {
-                        writer.WriteLine("=".PadRight(80, '='));
-                        writer.WriteLine("End of Report");
-                        writer.WriteLine("=".PadRight(80, '='));
                     }
                 }
 
-                Console.WriteLine($"  Written to: {outputFile}");
+                if (verbose)
+                {
+                    writer.WriteLine("=".PadRight(80, '='));
+                    writer.WriteLine("End of Report");
+                    writer.WriteLine("=".PadRight(80, '='));
+                }
+
+                if (keepHierarchy)
+                {
+                    writer.Dispose();
+                    Console.WriteLine($"  Written to: {outputFile}");
+                }
+                
                 Console.WriteLine($"  Assets files: {manager.assetsFileList.Count}, Total objects: {manager.assetsFileList.Sum(f => f.Objects.Count)}");
 
                 // Cleanup
                 manager.Clear();
+            }
+            finally
+            {
+                if (keepHierarchy && writer != null)
+                {
+                    writer.Dispose();
+                }
+            }
         }
+
         
 
         static void PrintGameObjectHierarchy(SerializedFile assetsFile, StreamWriter writer)
