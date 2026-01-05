@@ -13,10 +13,11 @@ namespace AssetStudioCLI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: AssetStudioCLI <input_path> <output_directory> [--verbose] [--keep-hierarchy]");
+                Console.WriteLine("Usage: AssetStudioCLI <input_path> <output_directory> [--verbose] [--keep-hierarchy] [--skip-invalid]");
                 Console.WriteLine("  input_path: File or directory to process");
-                Console.WriteLine("  --verbose: Show detailed information");
+                Console.WriteLine("  --verbose: Show detailed information (default: false)");
                 Console.WriteLine("  --keep-hierarchy: Create separate files for each asset (default: false)");
+                Console.WriteLine("  --skip-invalid (-s): Skip files starting with NKAB (default: true)");
                 Console.WriteLine("Example: AssetStudioCLI myasset.unity3d C:\\output");
                 Console.WriteLine("         AssetStudioCLI C:\\assets C:\\output --verbose");
                 Console.WriteLine("         AssetStudioCLI C:\\assets C:\\output --keep-hierarchy");
@@ -26,7 +27,8 @@ namespace AssetStudioCLI
             string inputPath = args[0];
             string outputDir = args[1];
             bool verbose = args.Any(a => a == "--verbose" || a == "-v");
-            bool keepHierarchy = args.Any(a => a == "--keep-hierarchy " || a == "-k");
+            bool keepHierarchy = args.Any(a => a == "--keep-hierarchy" || a == "-k");
+            bool skipInvalid = !args.Any(a => a == "--skip-invalid" && args.Length > Array.IndexOf(args, a) + 1 && args[Array.IndexOf(args, a) + 1] == "false") && !args.Contains("-s=false");
 
             if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
             {
@@ -75,6 +77,13 @@ namespace AssetStudioCLI
                     {
                         try
                         {
+                            // Skip files starting with NKAB if skip-invalid is enabled
+                            if (skipInvalid && IsNKABFile(file))
+                            {
+                                Console.WriteLine($"Skipping invalid file (NKAB): {file}");
+                                continue;
+                            }
+                            
                             ProcessFile(file, outputDir, verbose, inputPath, keepHierarchy, singleWriter);
                             processedCount++;
                         }
@@ -99,6 +108,28 @@ namespace AssetStudioCLI
             {
                 Console.WriteLine($"Error: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        static bool IsNKABFile(string filePath)
+        {
+            try
+            {
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    if (fs.Length < 4)
+                        return false;
+                    
+                    byte[] buffer = new byte[4];
+                    fs.Read(buffer, 0, 4);
+                    
+                    // Check if first 4 bytes are 'NKAB' (0x4E 0x4B 0x41 0x42)
+                    return buffer[0] == 0x4E && buffer[1] == 0x4B && buffer[2] == 0x41 && buffer[3] == 0x42;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -162,7 +193,6 @@ namespace AssetStudioCLI
 
                 foreach (var assetsFile in manager.assetsFileList)
                 {
-                    
                     writer.WriteLine($"Assets File: {assetsFile.fileName}");
                     
                     if (verbose)
