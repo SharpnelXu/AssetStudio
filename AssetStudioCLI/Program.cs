@@ -66,7 +66,7 @@ namespace AssetStudioCLI
 
                 if (!keepHierarchy)
                 {
-                    string singleOutputFile = Path.Combine(outputDir, "asset-info.txt");
+                    string singleOutputFile = Path.Combine(outputDir, "asset-info.csv");
                     singleWriter = new StreamWriter(singleOutputFile, false, Encoding.UTF8);
                     Console.WriteLine($"Writing all output to: {singleOutputFile}");
                 }
@@ -169,9 +169,9 @@ namespace AssetStudioCLI
             else
             {
                 writer = singleWriter;
-                writer.WriteLine("\n" + "=".PadRight(80, '='));
-                writer.WriteLine($"FILE: {inputFile}");
-                writer.WriteLine("=".PadRight(80, '=') + "\n");
+                // writer.WriteLine("\n" + "=".PadRight(80, '='));
+                // writer.WriteLine($"FILE: {inputFile}");
+                // writer.WriteLine("=".PadRight(80, '=') + "\n");
             }
 
             try
@@ -193,10 +193,10 @@ namespace AssetStudioCLI
 
                 foreach (var assetsFile in manager.assetsFileList)
                 {
-                    writer.WriteLine($"Assets File: {assetsFile.fileName}");
                     
                     if (verbose)
                     {
+                        writer.WriteLine($"Assets File: {assetsFile.fileName}");
                         writer.WriteLine($"Original Path: {assetsFile.originalPath}");
                         writer.WriteLine($"Full Path: {assetsFile.fullName}");
                         writer.WriteLine($"Unity Version: {assetsFile.unityVersion}");
@@ -217,13 +217,13 @@ namespace AssetStudioCLI
                         }
                         writer.WriteLine();
                     }
-                    writer.WriteLine();
+                    // writer.WriteLine();
 
                     // Print GameObject hierarchy
-                    writer.WriteLine("GameObject Hierarchy:");
-                    writer.WriteLine();
-                    PrintGameObjectHierarchy(assetsFile, writer);
-                    writer.WriteLine();
+                    // writer.WriteLine("GameObject Hierarchy:");
+                    // writer.WriteLine();
+                    PrintGameObjectHierarchy(assetsFile, writer, verbose);
+                    // writer.WriteLine();
 
                     if (verbose)
                     {
@@ -325,14 +325,17 @@ namespace AssetStudioCLI
 
         
 
-        static void PrintGameObjectHierarchy(SerializedFile assetsFile, StreamWriter writer)
+        static void PrintGameObjectHierarchy(SerializedFile assetsFile, StreamWriter writer, bool verbose = false)
         {
             // Find all GameObjects
             var gameObjects = assetsFile.Objects.OfType<GameObject>().ToList();
             
             if (gameObjects.Count == 0)
             {
-                writer.WriteLine("  No GameObjects found in this file.");
+                if (verbose)
+                {
+                    writer.WriteLine("  No GameObjects found in this file.");
+                }
                 return;
             }
 
@@ -351,23 +354,34 @@ namespace AssetStudioCLI
                 }
             }
 
-            // Print each root and its children recursively
-            foreach (var root in rootObjects)
+            if (verbose)
             {
-                PrintGameObjectRecursive(root, writer, 0, visitedTransforms);
-            }
-
-            // Print any orphaned objects that weren't visited
-            var unvisitedObjects = gameObjects.Where(go => 
-                go.m_Transform != null && !visitedTransforms.Contains(go.m_Transform.m_PathID)).ToList();
-            
-            if (unvisitedObjects.Count > 0)
-            {
-                writer.WriteLine();
-                writer.WriteLine("  Orphaned GameObjects (no valid parent chain):");
-                foreach (var go in unvisitedObjects)
+                // Print each root and its children recursively
+                foreach (var root in rootObjects)
                 {
-                    PrintGameObjectRecursive(go, writer, 0, visitedTransforms);
+                    PrintGameObjectRecursive(root, writer, 0, visitedTransforms);
+                }
+
+                // Print any orphaned objects that weren't visited
+                var unvisitedObjects = gameObjects.Where(go => 
+                    go.m_Transform != null && !visitedTransforms.Contains(go.m_Transform.m_PathID)).ToList();
+                
+                if (unvisitedObjects.Count > 0)
+                {
+                    writer.WriteLine();
+                    writer.WriteLine("  Orphaned GameObjects (no valid parent chain):");
+                    foreach (var go in unvisitedObjects)
+                    {
+                        PrintGameObjectRecursive(go, writer, 0, visitedTransforms);
+                    }
+                }
+            }
+            else 
+            {
+                // Non-verbose: Just print root objects
+                foreach (var root in rootObjects)
+                {
+                    writer.WriteLine($"{assetsFile.originalPath.Split(Path.DirectorySeparatorChar).Last()},{root.m_Name}");
                 }
             }
         }
