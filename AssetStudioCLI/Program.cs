@@ -13,13 +13,15 @@ namespace AssetStudioCLI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: AssetStudioCLI <input_file> <output_directory>");
+                Console.WriteLine("Usage: AssetStudioCLI <input_file> <output_directory> [--verbose]");
                 Console.WriteLine("Example: AssetStudioCLI myasset.unity3d C:\\output");
+                Console.WriteLine("        AssetStudioCLI myasset.unity3d C:\\output --verbose");
                 return;
             }
 
             string inputFile = args[0];
             string outputDir = args[1];
+            bool verbose = args.Length > 2 && (args[2] == "--verbose" || args[2] == "-v");
 
             if (!File.Exists(inputFile))
             {
@@ -45,39 +47,51 @@ namespace AssetStudioCLI
                 
                 using (StreamWriter writer = new StreamWriter(outputFile, false, Encoding.UTF8))
                 {
-                    writer.WriteLine("=".PadRight(80, '='));
-                    writer.WriteLine("Asset Studio - File Information");
-                    writer.WriteLine("=".PadRight(80, '='));
-                    writer.WriteLine($"Input File: {inputFile}");
-                    writer.WriteLine($"Generated: {DateTime.Now}");
-                    writer.WriteLine("=".PadRight(80, '='));
-                    writer.WriteLine();
+                    if (verbose)
+                    {
+                        writer.WriteLine("=".PadRight(80, '='));
+                        writer.WriteLine("Asset Studio - File Information");
+                        writer.WriteLine("=".PadRight(80, '='));
+                        writer.WriteLine($"Input File: {inputFile}");
+                        writer.WriteLine($"Generated: {DateTime.Now}");
+                        writer.WriteLine("=".PadRight(80, '='));
+                        writer.WriteLine();
 
-                    // Print information about loaded assets files
-                    writer.WriteLine($"Total Assets Files Loaded: {manager.assetsFileList.Count}");
-                    writer.WriteLine();
+                        // Print information about loaded assets files
+                        writer.WriteLine($"Total Assets Files Loaded: {manager.assetsFileList.Count}");
+                        writer.WriteLine();
+                    }
 
                     foreach (var assetsFile in manager.assetsFileList)
                     {
-                        writer.WriteLine("-".PadRight(80, '-'));
-                        writer.WriteLine($"Assets File: {assetsFile.fileName}");
-                        writer.WriteLine($"Full Path: {assetsFile.fullName}");
-                        writer.WriteLine($"Original Path: {assetsFile.originalPath}");
-                        writer.WriteLine($"Unity Version: {assetsFile.unityVersion}");
-                        writer.WriteLine($"Version: {assetsFile.version}");
-                        writer.WriteLine($"Platform: {assetsFile.m_TargetPlatform}");
-                        writer.WriteLine($"Total Objects: {assetsFile.Objects.Count}");
-                        writer.WriteLine();
-
-                        // Group objects by type
-                        var objectsByType = assetsFile.Objects
-                            .GroupBy(o => o.type)
-                            .OrderByDescending(g => g.Count());
-
-                        writer.WriteLine("Object Types:");
-                        foreach (var group in objectsByType)
+                        if (verbose)
                         {
-                            writer.WriteLine($"  {group.Key,-30} Count: {group.Count()}");
+                            writer.WriteLine("-".PadRight(80, '-'));
+                        }
+                        
+                        writer.WriteLine($"Assets File: {assetsFile.fileName}");
+                        writer.WriteLine($"Original Path: {assetsFile.originalPath}");
+                        
+                        if (verbose)
+                        {
+                            writer.WriteLine($"Full Path: {assetsFile.fullName}");
+                            writer.WriteLine($"Unity Version: {assetsFile.unityVersion}");
+                            writer.WriteLine($"Version: {assetsFile.version}");
+                            writer.WriteLine($"Platform: {assetsFile.m_TargetPlatform}");
+                            writer.WriteLine($"Total Objects: {assetsFile.Objects.Count}");
+                            writer.WriteLine();
+
+                            // Group objects by type
+                            var objectsByType = assetsFile.Objects
+                                .GroupBy(o => o.type)
+                                .OrderByDescending(g => g.Count());
+
+                            writer.WriteLine("Object Types:");
+                            foreach (var group in objectsByType)
+                            {
+                                writer.WriteLine($"  {group.Key,-30} Count: {group.Count()}");
+                            }
+                            writer.WriteLine();
                         }
                         writer.WriteLine();
 
@@ -87,77 +101,96 @@ namespace AssetStudioCLI
                         PrintGameObjectHierarchy(assetsFile, writer);
                         writer.WriteLine();
 
-                        // List some details about specific object types
-                        writer.WriteLine("Detailed Object Information:");
-                        
-                        foreach (var obj in assetsFile.Objects.Take(100)) // Limit to first 100 objects
+                        if (verbose)
                         {
-                            writer.WriteLine($"  [{obj.type}] PathID: {obj.m_PathID}");
-                            
-                            // Add specific details based on object type
-                            switch (obj)
-                            {
-                                case Texture2D texture:
-                                    writer.WriteLine($"    Name: {texture.m_Name}");
-                                    writer.WriteLine($"    Size: {texture.m_Width}x{texture.m_Height}");
-                                    writer.WriteLine($"    Format: {texture.m_TextureFormat}");
-                                    break;
-                                case GameObject gameObj:
-                                    writer.WriteLine($"    Name: {gameObj.m_Name}");
-                                    writer.WriteLine($"    Components: {gameObj.m_Components.Length}");
-                                    break;
-                                case MonoBehaviour monoBehaviour:
-                                    writer.WriteLine($"    Name: {monoBehaviour.m_Name}");
-                                    if (monoBehaviour.m_Script.TryGet(out var script))
-                                    {
-                                        writer.WriteLine($"    Script: {script.m_ClassName}");
-                                    }
-                                    break;
-                                case TextAsset textAsset:
-                                    writer.WriteLine($"    Name: {textAsset.m_Name}");
-                                    writer.WriteLine($"    Size: {textAsset.m_Script.Length} bytes");
-                                    break;
-                                case AudioClip audioClip:
-                                    writer.WriteLine($"    Name: {audioClip.m_Name}");
-                                    break;
-                                case Mesh mesh:
-                                    writer.WriteLine($"    Name: {mesh.m_Name}");
-                                    writer.WriteLine($"    Vertices: {mesh.m_VertexCount}");
-                                    break;
-                                case Material material:
-                                    writer.WriteLine($"    Name: {material.m_Name}");
-                                    if (material.m_Shader.TryGet(out var shader))
-                                    {
-                                        writer.WriteLine($"    Shader: {shader.m_Name}");
-                                    }
-                                    break;
-                                case Sprite sprite:
-                                    writer.WriteLine($"    Name: {sprite.m_Name}");
-                                    writer.WriteLine($"    Rect: x={sprite.m_Rect.x}, y={sprite.m_Rect.y}, w={sprite.m_Rect.width}, h={sprite.m_Rect.height}");
-                                    break;
-                                case AnimationClip animClip:
-                                    writer.WriteLine($"    Name: {animClip.m_Name}");
-                                    break;
-                                default:
-                                    if (obj is NamedObject namedObj && !string.IsNullOrEmpty(namedObj.m_Name))
-                                    {
-                                        writer.WriteLine($"    Name: {namedObj.m_Name}");
-                                    }
-                                    break;
-                            }
+                            writer.WriteLine("Detailed Object Information:");
                             writer.WriteLine();
-                        }
 
-                        if (assetsFile.Objects.Count > 100)
-                        {
-                            writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
-                            writer.WriteLine();
+                            foreach (var obj in assetsFile.Objects)
+                            {
+                                writer.WriteLine($"  [{obj.type}] PathID: {obj.m_PathID}");
+                                
+                                // Add specific details based on object type
+                                switch (obj)
+                                {
+                                    case Texture2D texture:
+                                        writer.WriteLine($"    Name: {texture.m_Name}");
+                                        writer.WriteLine($"    Size: {texture.m_Width}x{texture.m_Height}");
+                                        writer.WriteLine($"    Format: {texture.m_TextureFormat}");
+                                        break;
+                                    case GameObject gameObj:
+                                        writer.WriteLine($"    Name: {gameObj.m_Name}");
+                                        writer.WriteLine($"    Components: {gameObj.m_Components.Length}");
+                                        break;
+                                    case MonoBehaviour monoBehaviour:
+                                        writer.WriteLine($"    Name: {monoBehaviour.m_Name}");
+                                        if (monoBehaviour.m_Script.TryGet(out var script))
+                                        {
+                                            writer.WriteLine($"    Script: {script.m_ClassName}");
+                                        }
+                                        break;
+                                    case TextAsset textAsset:
+                                        writer.WriteLine($"    Name: {textAsset.m_Name}");
+                                        writer.WriteLine($"    Size: {textAsset.m_Script.Length} bytes");
+                                        break;
+                                    case AudioClip audioClip:
+                                        writer.WriteLine($"    Name: {audioClip.m_Name}");
+                                        break;
+                                    case Mesh mesh:
+                                        writer.WriteLine($"    Name: {mesh.m_Name}");
+                                        writer.WriteLine($"    Vertices: {mesh.m_VertexCount}");
+                                        break;
+                                    case Material material:
+                                        writer.WriteLine($"    Name: {material.m_Name}");
+                                        if (material.m_Shader.TryGet(out var shader))
+                                        {
+                                            writer.WriteLine($"    Shader: {shader.m_Name}");
+                                        }
+                                        break;
+                                    case Sprite sprite:
+                                        writer.WriteLine($"    Name: {sprite.m_Name}");
+                                        writer.WriteLine($"    Rect: x={sprite.m_Rect.x}, y={sprite.m_Rect.y}, w={sprite.m_Rect.width}, h={sprite.m_Rect.height}");
+                                        break;
+                                    case AnimationClip animClip:
+                                        writer.WriteLine($"    Name: {animClip.m_Name}");
+                                        break;
+                                    default:
+                                        if (obj is NamedObject namedObj && !string.IsNullOrEmpty(namedObj.m_Name))
+                                        {
+                                            writer.WriteLine($"    Name: {namedObj.m_Name}");
+                                        }
+                                        break;
+                                }
+                                writer.WriteLine();
+                            }
+
+                            if (assetsFile.Objects.Count > 100)
+                            {
+                                writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
+                                writer.WriteLine();
+                            }
+
+                            if (verbose)
+                            {
+                                writer.WriteLine("=".PadRight(80, '='));
+                                writer.WriteLine("End of Report");
+                                writer.WriteLine("=".PadRight(80, '='));
+                            }
+
+                            if (assetsFile.Objects.Count > 100)
+                            {
+                                writer.WriteLine($"  ... and {assetsFile.Objects.Count - 100} more objects");
+                                writer.WriteLine();
+                            }
                         }
                     }
 
-                    writer.WriteLine("=".PadRight(80, '='));
-                    writer.WriteLine("End of Report");
-                    writer.WriteLine("=".PadRight(80, '='));
+                    if (verbose)
+                    {
+                        writer.WriteLine("=".PadRight(80, '='));
+                        writer.WriteLine("End of Report");
+                        writer.WriteLine("=".PadRight(80, '='));
+                    }
                 }
 
                 Console.WriteLine($"Successfully wrote asset information to: {outputFile}");
@@ -173,6 +206,7 @@ namespace AssetStudioCLI
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
             }
         }
+        
 
         static void PrintGameObjectHierarchy(SerializedFile assetsFile, StreamWriter writer)
         {
