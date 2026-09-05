@@ -3,7 +3,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
-using AssetStudioCLI.Extractor;
 
 namespace AssetStudioCLI.Extractor.Decrypt;
 
@@ -12,12 +11,11 @@ namespace AssetStudioCLI.Extractor.Decrypt;
  */
 class NikkeDbDecryptor
 {
-	public static MemoryStream? DecryptNikkeDatabase(NikkeExtractorOptions options)
+	public static FileInfo DecryptNikkeDatabase(NikkeExtractorOptions options)
 	{
 		if (!File.Exists(options.DbPath))
 		{
-			Console.WriteLine($"Database file not found: {options.DbPath}");
-			return null;
+			throw new FileNotFoundException("Nikke database not found", options.DbPath);
 		}
 		
 		using var fs = new FileStream(options.DbPath, FileMode.Open, FileAccess.Read);
@@ -33,10 +31,10 @@ class NikkeDbDecryptor
 		};
 
 		if (!header.Magic.SequenceEqual("NKDB"u8.ToArray()))
-			return null; // invalid magic
+			throw new ArgumentException("Invalid DB header" + header.Magic); // invalid magic
 
 		if (header.Version != 1)
-			return null; // invalid version
+			throw new ArgumentException("Invalid DB version" + header.Version); // invalid version
 
 		long ReadOffset()
 		{
@@ -54,7 +52,11 @@ class NikkeDbDecryptor
 			currentOffset = nextOffset;
 		}
 
-		var output = new MemoryStream();
+		var outputDirectory = options.StoreDbOutputPath ?? Path.Combine(".", "tmp");
+		Directory.CreateDirectory(outputDirectory);
+		var file = new FileInfo(options.DbPath);
+		var outputFilePath = Path.Combine(outputDirectory, file.Name);
+		using var outputStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
 
 		foreach (var (offset, length, index) in segments)
 		{
@@ -69,22 +71,10 @@ class NikkeDbDecryptor
 
 			using var ms = new MemoryStream(decrypted);
 			using var zlib = new ZLibStream(ms, CompressionMode.Decompress);
-			zlib.CopyTo(output);
-
+			zlib.CopyTo(outputStream);
 		}
 		
-		if (options.StoreDbOutputPath != null)
-		{
-			Directory.CreateDirectory(options.StoreDbOutputPath);
-			var file = new FileInfo(options.DbPath);
-			var outputFilePath = Path.Combine(options.StoreDbOutputPath, file.Name);
-			
-			using var storeDbStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
-			output.Seek(0, SeekOrigin.Begin);
-			output.CopyTo(storeDbStream);
-		}
-
-		return output;
+		return new FileInfo(outputFilePath);
 	}
 
 	static uint ReadUInt32BigEndian(BinaryReader reader)

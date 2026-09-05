@@ -20,14 +20,12 @@ public static class NikkeAssetExtractor
     Console.WriteLine($"storeDbOutputPath: {options.StoreDbOutputPath ?? "(null)"}");
     Console.WriteLine($"storeCatalogOutputPath: {options.StoreCatalogOutputPath ?? "(null)"}");
     
-    using var dbStream = NikkeDbDecryptor.DecryptNikkeDatabase(options);
-    if (dbStream == null)
-    {
-      Console.WriteLine("Failed to decrypt the database: " + options.DbPath);
-      return;
-    }
-    
-    Console.WriteLine("Database decrypted successfully. Proceeding with extraction...");
+    Console.WriteLine("Decrypting Nikke database: " + options.DbPath); 
+    var dbFile = NikkeDbDecryptor.DecryptNikkeDatabase(options);
+    Console.WriteLine("Reading chunks from DB");
+    var chunkMapper = new ChunkMapper(options, dbFile);
+    chunkMapper.MapChunks().Wait();
+    Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
   }
 
   private static bool TryParseArgs(string[] args, out NikkeExtractorOptions options)
