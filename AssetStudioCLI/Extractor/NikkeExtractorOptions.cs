@@ -7,6 +7,7 @@ public sealed record NikkeExtractorOptions
   public required string OutputDirectory { get; init; }
   public bool IsDryRun { get; init; }
   public string? PrefixFilePath { get; init; }
+  public string? StoreAssetPath { get; init; }
   public string? StoreDbOutputPath { get; init; }
   public string? StoreCatalogOutputPath { get; init; }
 }

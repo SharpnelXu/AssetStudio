@@ -17,6 +17,7 @@ public static class NikkeAssetExtractor
     Console.WriteLine($"outputDirectory: {options.OutputDirectory}");
     Console.WriteLine($"isDryRun: {options.IsDryRun}");
     Console.WriteLine($"prefixFilePath: {options.PrefixFilePath ?? "(null)"}");
+    Console.WriteLine($"storeAssetOutputPath: {options.StoreAssetPath ?? "(null)"}");
     Console.WriteLine($"storeDbOutputPath: {options.StoreDbOutputPath ?? "(null)"}");
     Console.WriteLine($"storeCatalogOutputPath: {options.StoreCatalogOutputPath ?? "(null)"}");
     try
@@ -27,6 +28,8 @@ public static class NikkeAssetExtractor
       var chunkMapper = new ChunkMapper(options, dbFile);
       chunkMapper.MapChunks().Wait();
       Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
+      var extractedAssets = chunkMapper.ReadChunks();
+      Console.WriteLine("Extracted assets: " + extractedAssets);
     }
     finally
     {
@@ -58,6 +61,7 @@ public static class NikkeAssetExtractor
     var isDryRun = false;
     string? prefixFilePath = null;
     string? storeDbOutputPath = null;
+    string? assetOutputPath = null;
     string? storeCatalogOutputPath = null;
 
     // Parse options starting from index 3
@@ -75,6 +79,11 @@ public static class NikkeAssetExtractor
         case "--prefix":
         case "-p":
           if (!TryReadOptionValue(args, ref i, arg, out prefixFilePath)) return false;
+          break;
+
+        case "--storeAsset":
+        case "-a":
+          if (!TryReadOptionValue(args, ref i, arg, out assetOutputPath)) return false;
           break;
 
         case "--storeDb":
@@ -100,6 +109,7 @@ public static class NikkeAssetExtractor
       OutputDirectory = outputDirectory,
       IsDryRun = isDryRun,
       PrefixFilePath = prefixFilePath,
+      StoreAssetPath = assetOutputPath,
       StoreDbOutputPath = storeDbOutputPath,
       StoreCatalogOutputPath = storeCatalogOutputPath
     };
@@ -124,14 +134,14 @@ public static class NikkeAssetExtractor
   private static void PrintUsage()
   {
     Console.WriteLine("Usage:");
-    Console.WriteLine("  AssetStudioCLI extract <db_path> <chunk_path> <output_directory> [options]");
+    Console.WriteLine("  AssetStudioCLI extract <db_file_path> <chunk_path> <output_directory> [options]");
     Console.WriteLine();
     Console.WriteLine("Info:");
     Console.WriteLine("  This tool is for data extraction after the 2026 Sep 2nd update.");
     Console.WriteLine();
     Console.WriteLine("Required:");
-    Console.WriteLine("  db_path           Path to Nikke `catalog.ndb`.");
-    Console.WriteLine("  chunk_path        Path to Nikke `store.cdb`.");
+    Console.WriteLine("  db_file_path      File path to Nikke `catalog.ndb`.");
+    Console.WriteLine("  chunk_path        Path to Nikke `store.cdb` & `store.cdb.idx`.");
     Console.WriteLine("  output_directory  Directory where extracted assets are saved.");
     Console.WriteLine();
     Console.WriteLine("Options:");
@@ -142,6 +152,9 @@ public static class NikkeAssetExtractor
     Console.WriteLine("  --prefix, -p <prefix_file_path> <manifest_file_path>");
     Console.WriteLine("      Path to a file with asset prefixes to include (one prefix per line).");
     Console.WriteLine("      Example prefix: `icons-char-si(hd)_assets`.");
+    Console.WriteLine();
+    Console.WriteLine("  --storeAsset, -a <asset_output_path>");
+    Console.WriteLine("      Save the extracted unity assets to this path.");
     Console.WriteLine();
     Console.WriteLine("  --storeDb, -b <decrypted_db_file_output_path>");
     Console.WriteLine("      Save the decrypted database to this path.");

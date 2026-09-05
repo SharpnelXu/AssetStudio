@@ -66,7 +66,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       var fileOffset = Convert.ToInt64(reader.GetValue(2));
 
       var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
-      if (prefix == null && options.StoreCatalogOutputPath == null)
+      if (prefixes.Count > 0 && prefix == null && options.StoreCatalogOutputPath == null)
         continue; // not one of the desired icon assets and don't need to list
 
       // var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
@@ -93,11 +93,112 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
     }
 
     foreach (var (fileKey, chunks) in fileChunks)
+    {
+      var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
+      if (prefixes.Count > 0 && prefix == null)
+        continue;
+      
       FileChunks[fileKey] = new FileChunkInfo
       {
         FileKey = fileKey,
         Chunks = chunks.OrderBy(c => c.FileOffset).ToList()
       };
+    }
+  }
+
+  /**
+   * returns the number of successfully extracted assets
+   */
+  public int ReadChunks()
+  {
+    var idxPath = Path.Combine(options.ChunkPath, "store.cdb.idx");
+    var cdbPath = Path.Combine(options.ChunkPath, "store.cdb");
+
+    if (!File.Exists(idxPath))
+      throw new FileNotFoundException("store.cdb.idx not found in the specified chunk path.");
+
+    if (!File.Exists(cdbPath))
+      throw new FileNotFoundException("store.cdb not found in the specified chunk path.");
+
+    // Gather the set of chunk hashes we care about
+    var wantedHashes = new HashSet<string>(
+      FileChunks.Values.SelectMany(f => f.Chunks).Select(c => c.ChunkHash),
+      StringComparer.OrdinalIgnoreCase);
+    var chunkLocations = new Dictionary<string, (long Offset, uint Size)>(StringComparer.OrdinalIgnoreCase);
+
+    using (var idxStream = File.OpenRead(idxPath))
+    using (var idxReader = new BinaryReader(idxStream))
+    {
+      var magic = new string(idxReader.ReadChars(4));
+      if (magic != "CIDX") throw new InvalidDataException("Invalid CIDX file.");
+
+      var version = idxReader.ReadUInt32();
+      if (version != 1) throw new InvalidDataException($"Unsupported CIDX version: {version}");
+
+      var entryCount = idxReader.ReadUInt32();
+
+      for (var i = 0; i < entryCount; i++)
+      {
+        var hash = idxReader.ReadBytes(16);
+        var offset = idxReader.ReadUInt64();
+        var size = idxReader.ReadUInt32();
+
+        var hexHash = Convert.ToHexString(hash).ToLowerInvariant();
+        if (wantedHashes.Contains(hexHash)) chunkLocations[hexHash] = ((long)offset, size);
+      }
+    }
+    
+    var assetPath = options.StoreAssetPath ?? Path.Combine(".", "tmp");
+    Directory.CreateDirectory(assetPath);
+    var extractedAssets = 0;
+
+    using var cdbStream = File.OpenRead(cdbPath);
+    using var decompressor = new ZstdSharp.Decompressor();
+
+    foreach (var fileChunkInfo in FileChunks.Values)
+    {
+      using var outputStream = new MemoryStream();
+      var allChunksFound = true;
+
+      foreach (var chunk in fileChunkInfo.Chunks.OrderBy(c => c.FileOffset))
+      {
+        if (!chunkLocations.TryGetValue(chunk.ChunkHash, out var location))
+        {
+          Console.WriteLine($"- Missing chunk {chunk.ChunkHash} for {fileChunkInfo.FileKey}");
+          allChunksFound = false;
+          break;
+        }
+
+        cdbStream.Seek(location.Offset, SeekOrigin.Begin);
+        var compressed = new byte[location.Size];
+        var totalRead = 0;
+        while (totalRead < compressed.Length)
+        {
+          var read = cdbStream.Read(compressed, totalRead, compressed.Length - totalRead);
+          if (read <= 0) break;
+          totalRead += read;
+        }
+
+        var decompressed = decompressor.Unwrap(compressed).ToArray();
+        outputStream.Write(decompressed, 0, decompressed.Length);
+      }
+
+      if (!allChunksFound) continue;
+
+      var safeFileName = SanitizeFileName(fileChunkInfo.FileKey);
+      var destFile = Path.Combine(assetPath, safeFileName);
+      File.WriteAllBytes(destFile, outputStream.ToArray());
+      
+      extractedAssets++;
+    }
+
+    return extractedAssets;
+  }
+
+  private static string SanitizeFileName(string fileName)
+  {
+    foreach (var c in Path.GetInvalidFileNameChars()) fileName = fileName.Replace(c, '_');
+    return fileName;
   }
 
   private static string ToHexString(object? value)
