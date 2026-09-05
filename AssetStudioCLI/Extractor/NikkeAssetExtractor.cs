@@ -1,6 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using AssetStudio;
 using AssetStudioCLI.Extractor.Decrypt;
+using AssetStudioGUI;
 
 namespace AssetStudioCLI.Extractor;
 
@@ -28,8 +32,16 @@ public static class NikkeAssetExtractor
       var chunkMapper = new ChunkMapper(options, dbFile);
       chunkMapper.MapChunks().Wait();
       Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
-      var extractedAssets = chunkMapper.ReadChunks();
-      Console.WriteLine("Extracted assets: " + extractedAssets);
+      chunkMapper.ReadChunks();
+      Console.WriteLine("Extracted assets: " + chunkMapper.ExtractedFiles.Count);
+      if (options.IsDryRun)
+      {
+        Console.WriteLine("Dry run complete.");
+        return;
+      }
+      
+      ExtractSprites(chunkMapper.ExtractedFiles, options.OutputDirectory);
+      Console.WriteLine("Extraction complete.");
     }
     finally
     {
@@ -38,6 +50,35 @@ public static class NikkeAssetExtractor
       {
         Console.WriteLine("Cleaning up temporary directory.");
         Directory.Delete(tmpDirectory, true);
+      }
+    }
+  }
+
+  public static void ExtractSprites(List<string> extractedFiles, string outputDirectory)
+  {
+    Directory.CreateDirectory(outputDirectory);
+    var assetManager = new AssetsManager();
+    foreach (var fileName in extractedFiles)
+    {
+      if (!File.Exists(fileName))
+      {
+        continue;
+      }
+
+      assetManager.Clear();
+      assetManager.LoadFiles(fileName);
+      var fileInfo = new FileInfo(fileName);
+      var baseName = fileInfo.Name.Split('_')[0];
+
+      foreach (var serializedFile in assetManager.assetsFileList)
+      {
+        foreach (var sprite in serializedFile.Objects.Where(it => it.type == ClassIDType.Sprite))
+        {
+          var assetItem = new AssetItem(sprite);
+          assetItem.Text = ((NamedObject)sprite).m_Name;
+          var outputPath = Path.Combine(outputDirectory, baseName, "Sprite");
+          Exporter.ExportSprite(assetItem, outputPath);
+        }
       }
     }
   }

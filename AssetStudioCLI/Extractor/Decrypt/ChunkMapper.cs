@@ -14,6 +14,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
   private readonly NikkeExtractorOptions options = options;
   private readonly FileInfo dbFile = dbFile;
   public readonly Dictionary<string, FileChunkInfo> FileChunks = new(); // chunks ordered by file offset
+  public readonly List<string> ExtractedFiles = new();
 
   private const string NDB_QUERY_COMMAND = """
                                            SELECT 
@@ -109,7 +110,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
   /**
    * returns the number of successfully extracted assets
    */
-  public int ReadChunks()
+  public void ReadChunks()
   {
     var idxPath = Path.Combine(options.ChunkPath, "store.cdb.idx");
     var cdbPath = Path.Combine(options.ChunkPath, "store.cdb");
@@ -150,7 +151,6 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
     
     var assetPath = options.StoreAssetPath ?? Path.Combine(".", "tmp");
     Directory.CreateDirectory(assetPath);
-    var extractedAssets = 0;
 
     using var cdbStream = File.OpenRead(cdbPath);
     using var decompressor = new ZstdSharp.Decompressor();
@@ -189,10 +189,8 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       var destFile = Path.Combine(assetPath, safeFileName);
       File.WriteAllBytes(destFile, outputStream.ToArray());
       
-      extractedAssets++;
+      ExtractedFiles.Add(destFile);
     }
-
-    return extractedAssets;
   }
 
   private static string SanitizeFileName(string fileName)

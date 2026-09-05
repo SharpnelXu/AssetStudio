@@ -7,7 +7,7 @@ using System.Text;
 
 namespace AssetStudioGUI
 {
-    internal static class Exporter
+    public static class Exporter
     {
         public static bool ExportTexture2D(AssetItem item, string exportPath)
         {
