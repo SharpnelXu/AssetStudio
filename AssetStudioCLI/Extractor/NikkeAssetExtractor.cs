@@ -31,6 +31,12 @@ public static class NikkeAssetExtractor
       var chunkMapper = new ChunkMapper(options, dbFile);
       chunkMapper.MapChunks().Wait();
       Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
+      if (options.IsDryRun && options.StoreAssetPath == null)
+      {
+        Console.WriteLine("Dry run complete.");
+        return;
+      }
+      
       chunkMapper.ReadChunks();
       Console.WriteLine("Extracted assets: " + chunkMapper.ExtractedFiles.Count);
       if (options.IsDryRun)
