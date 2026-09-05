@@ -1,27 +1,13 @@
 ﻿using System;
+using AssetStudioCLI.Extractor.Decrypt;
 
 namespace AssetStudioCLI.Extractor;
 
-public class NikkeAssetExtractor
+public static class NikkeAssetExtractor
 {
-  private sealed class NikkeExtractorOptions
-  {
-    public required string DbPath { get; init; }
-    public required string ChunkPath { get; init; }
-    public required string OutputDirectory { get; init; }
-    public bool IsDryRun { get; init; }
-    public string? PrefixFilePath { get; init; }
-    public string? ManifestFilePath { get; init; }
-    public string? StoreDbOutputPath { get; init; }
-    public string? StoreCatalogOutputPath { get; init; }
-  }
-
   public static void Run(string[] args)
   {
-    if (!TryParseArgs(args, out var options))
-    {
-      return;
-    }
+    if (!TryParseArgs(args, out var options)) return;
 
     // TODO: actual extraction logic
     Console.WriteLine("Running Nikke Asset Extractor");
@@ -33,6 +19,15 @@ public class NikkeAssetExtractor
     Console.WriteLine($"manifestFilePath: {options.ManifestFilePath ?? "(null)"}");
     Console.WriteLine($"storeDbOutputPath: {options.StoreDbOutputPath ?? "(null)"}");
     Console.WriteLine($"storeCatalogOutputPath: {options.StoreCatalogOutputPath ?? "(null)"}");
+    
+    using var dbStream = NikkeDbDecryptor.DecryptNikkeDatabase(options);
+    if (dbStream == null)
+    {
+      Console.WriteLine("Failed to decrypt the database: " + options.DbPath);
+      return;
+    }
+    
+    Console.WriteLine("Database decrypted successfully. Proceeding with extraction...");
   }
 
   private static bool TryParseArgs(string[] args, out NikkeExtractorOptions options)
@@ -71,34 +66,22 @@ public class NikkeAssetExtractor
 
         case "--prefix":
         case "-p":
-          if (!TryReadOptionValue(args, ref i, arg, out prefixFilePath))
-          {
-            return false;
-          }
+          if (!TryReadOptionValue(args, ref i, arg, out prefixFilePath)) return false;
           break;
 
         case "--manifest":
         case "-m":
-          if (!TryReadOptionValue(args, ref i, arg, out manifestFilePath))
-          {
-            return false;
-          }
+          if (!TryReadOptionValue(args, ref i, arg, out manifestFilePath)) return false;
           break;
 
         case "--storeDb":
         case "-b":
-          if (!TryReadOptionValue(args, ref i, arg, out storeDbOutputPath))
-          {
-            return false;
-          }
+          if (!TryReadOptionValue(args, ref i, arg, out storeDbOutputPath)) return false;
           break;
 
         case "--storeCatalog":
         case "-c":
-          if (!TryReadOptionValue(args, ref i, arg, out storeCatalogOutputPath))
-          {
-            return false;
-          }
+          if (!TryReadOptionValue(args, ref i, arg, out storeCatalogOutputPath)) return false;
           break;
 
         default:
@@ -159,7 +142,8 @@ public class NikkeAssetExtractor
     Console.WriteLine("      Example prefix: `icons-char-si(hd)_assets`.");
     Console.WriteLine();
     Console.WriteLine("  --manifest, -m <manifest_file_path>");
-    Console.WriteLine("      Path to a previous manifest. Only new or updated assets are extracted (one asset name per line).");
+    Console.WriteLine("      Path to a previous manifest.");
+    Console.WriteLine("      Only new or updated assets are extracted (one asset per line).");
     Console.WriteLine();
     Console.WriteLine("  --storeDb, -b <decrypted_db_file_output_path>");
     Console.WriteLine("      Save the decrypted database to this path.");

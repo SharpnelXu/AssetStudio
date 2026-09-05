@@ -7,7 +7,7 @@ using AssetStudio;
 
 namespace AssetStudioCLI;
 
-public class AssetLister
+public static class AssetLister
 {
     public static void Run(string[] args)
     {
