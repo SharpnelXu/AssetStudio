@@ -228,10 +228,10 @@ namespace AssetStudioGUI
             return true;
         }
 
-        public static bool ExportSprite(AssetItem item, string exportPath)
+        public static bool ExportSprite(AssetItem item, string exportPath, bool overwrite = false)
         {
             var type = Properties.Settings.Default.convertType;
-            if (!TryExportFile(exportPath, item, "." + type.ToString().ToLower(), out var exportFullPath))
+            if (!TryExportFile(exportPath, item, "." + type.ToString().ToLower(), out var exportFullPath, overwrite))
                 return false;
             var image = ((Sprite)item.Asset).GetImage();
             if (image != null)
@@ -256,13 +256,17 @@ namespace AssetStudioGUI
             return true;
         }
 
-        private static bool TryExportFile(string dir, AssetItem item, string extension, out string fullPath)
+        private static bool TryExportFile(string dir, AssetItem item, string extension, out string fullPath, bool overwrite = false)
         {
             var fileName = FixFileName(item.Text);
             fullPath = Path.Combine(dir, fileName + extension);
             if (!File.Exists(fullPath))
             {
                 Directory.CreateDirectory(dir);
+                return true;
+            }
+            if (overwrite)
+            {
                 return true;
             }
             fullPath = Path.Combine(dir, fileName + item.UniqueID + extension);

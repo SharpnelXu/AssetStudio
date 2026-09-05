@@ -2,95 +2,77 @@
 
 A command-line tool for extracting and analyzing Unity asset file information using AssetStudio.
 
-## Description
-
-AssetStudioCLI is a console application that uses the AssetStudio library to read Unity asset files and generate detailed reports about their contents. It can process various Unity file formats including `.unity3d`, `.assetbundle`, and more.
 
 ## Usage
 
 ```bash
-AssetStudioCLI <input_path> <output_directory> [options]
+AssetStudioCLI <mode>
 ```
 
-### Parameters
+### Modes
+- `list`: Lists all assets in the specified Unity asset file.
+- `extract`: Extracts Sprites from the specified Nikke DB.
 
-- `input_path`: Path to the Unity asset file or directory containing asset files to analyze
-- `output_directory`: Directory where the output report(s) will be saved
+Type `AssetStudioCLI <mode>` for more information on a specific mode.
 
-### Options
+## List Mode
 
-- `--verbose` or `-v`: Show detailed information including object types, detailed object properties, and full metadata
-- `--keep-hierarchy` or `-k`: Create separate output files for each asset file, maintaining directory structure (default: false)
-- `--skip-invalid` or `-s`: Skip files starting with NKAB magic bytes (default: true) (this likely does not affect processing speed)
+Not maintained for now.
 
-### Examples
+## Extract Mode
 
-```bash
-# Basic usage - single file output
-AssetStudioCLI myasset.unity3d C:\output
+```
+Usage:
+  AssetStudioCLI extract <db_file_path> <chunk_path> <output_directory> [options]
 
-# Process entire directory with verbose output
-### Single File Mode (Default)
+Info:
+  This tool is for data extraction after the 2026 Sep 2nd update.
 
-By default, the tool generates a single `asset-info.txt` file in the output directory containing information from all processed files. Each file's data is separated with clear headers.
+Required:
+  db_file_path      File path to Nikke `catalog.ndb`.
+  chunk_path        Path to Nikke `store.cdb` & `store.cdb.idx`.
+  output_directory  Directory where extracted assets are saved.
 
-### Keep Hierarchy Mode
+Options:
+  --dry, -d
+      Run the extraction flow without writing asset files.
+      Useful with --storeCatalog to inspect available entries.
 
-With `--keep-hierarchy`, the tool creates separate `<filename>_info.txt` files for each asset, maintaining the input directory structure in the output.
+  --prefix, -p <prefix_file_path>
+      Path to a file with asset prefixes to include and output folder of that prefix (csv file).
+      Example prefix: `icons-char-si(hd)_assets,nikke`.
 
-### Content
+  --storeAsset, -a <asset_output_path>
+      Save the extracted unity assets to this path.
 
-The output file(s) contain:
+  --storeDb, -b <decrypted_db_file_output_path>
+      Save the decrypted database to this path.
 
-- **File Information**: Assets file name, original path, Unity version, platform
-- **GameObject Hierarchy**: Tree structure of GameObjects with their components
-- **Object Statistics** (verbose mode): Count of objects by type (Texture2D, GameObject, etc.)
-- **Detailed Object Information** (verbose mode): 
-# Process all files including NKAB files
-AssetStudioCLI C:\assets C:\output --skip-invalid false
-
-# Combine multiple options
-AssetStudioCLI C:\assets C:\output --verbose --keep-hierarchy
+  --storeCatalog, -c <db_entries_output_path>
+      Save extracted database entries to this path.
 ```
 
-This will:
-1. Load and parse `myasset.unity3d`
-2. Create the output directory if it doesn't exist
-3. Generate `asset_info.txt` in the output directory with detailed information
+For after the 2026/09/02 update. ONLY extract Sprites.
 
-## Output
+**NOTE:** If you don't provide a prefix file with `-p` the tool may run for a very long time since each catalog has
+a lot of assets. Consider running with `-d -c <catalog_output_dir>` to generate a readable catalog for the prefix file
+first, then use `-p <prefix_file>` to select what Sprites to extract.
 
-The tool generates a text file (`asset_info.txt`) containing:
+Sample prefix file format (CSV): `prefix,output_dir`
+```
+icons-jukebox_album(hd)_assets,jukebox
+icons-emblem(hd),emblem
+icons-squad(hd),squad
+```
 
-- **File Information**: Unity version, platform, file paths
-- **Object Statistics**: Count of objects by type (Texture2D, GameObject, etc.)
-- **Detailed Object List**: Information about individual objects including:
-  - Textures (size, format)
-  - GameObjects (name, components)
-  - Materials (name, shader)
-  - Meshes (name, vertex count)
-  - Audio clips, animations, sprites, and more
+This prefix file will extract all assets with the prefix `icons-jukebox_album(hd)_assets` to the output directory in `jukebox`, and so on.
 
-## Building
+Sample usage to just list catalogs:
+```
+AssetStudioCLI extract D:\GAMES\Nikke\NIKKE\Unity\com_proximabeta_NIKKE\com.shiftup.patch\dp\catalog.ndb D:\GAMES\Nikke\NIKKE\Unity\com_proximabeta_NIKKE\com.shiftup.patch\dp\chunk\ D:\github\AssetStudio\AssetStudioCLI\Output\dp -c D:\github\AssetStudio\AssetStudioCLI\Catalog\ -d
+```
 
-Build the solution in Visual Studio or using the .NET CLI:
-
-```bash
-dotnet build AssetStudioCLI.csproj -c Release
-```can process individual files or entire directories recursively
-- Supports various file formats including bundles, web files, and compressed archives
-- External file references in assets are automatically loaded if found in the same directory
-- Files starting with NKAB magic bytes are skipped by default (can be disabled with `--skip-invalid false`)
-- Files without valid assets are automatically skipped
-- In verbose mode, detailed object information is limited to all objects to keep output comprehensiv
-
-## Requirements
-
-- .NET 8.0 Runtime
-- AssetStudio library (included as project reference)
-
-## Notes
-
-- The tool automatically handles various file formats including bundles, web files, and compressed archives
-- External file references in assets are automatically loaded if found in the same directory
-- Large files are limited to showing the first 100 objects in detail to keep output manageable
+Sample usage with prefix file:
+```
+AssetStudioCLI extract D:\GAMES\Nikke\NIKKE\Unity\com_proximabeta_NIKKE\com.shiftup.patch\dp\catalog.ndb D:\GAMES\Nikke\NIKKE\Unity\com_proximabeta_NIKKE\com.shiftup.patch\dp\chunk\ D:\github\AssetStudio\AssetStudioCLI\Output\dp -c D:\github\AssetStudio\AssetStudioCLI\Catalog\ -p D:\github\AssetStudio\AssetStudioCLI\Prefix\icons.csv
+```

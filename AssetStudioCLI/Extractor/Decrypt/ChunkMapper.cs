@@ -36,7 +36,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
     var prefixes = new List<string>();
     if (options.PrefixFilePath != null && File.Exists(options.PrefixFilePath))
       prefixes = (await File.ReadAllLinesAsync(options.PrefixFilePath))
-        .Select(line => line.Trim())
+        .Select(line => line.Split(',')[0].Trim()) // take only the first part before a comma, if present
         .Where(line => !string.IsNullOrEmpty(line))
         .ToList();
 
@@ -98,7 +98,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
       if (prefixes.Count > 0 && prefix == null)
         continue;
-      
+
       FileChunks[fileKey] = new FileChunkInfo
       {
         FileKey = fileKey,
@@ -148,7 +148,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
         if (wantedHashes.Contains(hexHash)) chunkLocations[hexHash] = ((long)offset, size);
       }
     }
-    
+
     var assetPath = options.StoreAssetPath ?? Path.Combine(".", "tmp");
     Directory.CreateDirectory(assetPath);
 
@@ -188,7 +188,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       var safeFileName = SanitizeFileName(fileChunkInfo.FileKey);
       var destFile = Path.Combine(assetPath, safeFileName);
       File.WriteAllBytes(destFile, outputStream.ToArray());
-      
+
       ExtractedFiles.Add(destFile);
     }
   }

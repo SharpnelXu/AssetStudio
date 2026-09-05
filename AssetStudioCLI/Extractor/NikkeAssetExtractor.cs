@@ -14,7 +14,6 @@ public static class NikkeAssetExtractor
   {
     if (!TryParseArgs(args, out var options)) return;
 
-    // TODO: actual extraction logic
     Console.WriteLine("Running Nikke Asset Extractor");
     Console.WriteLine($"dbPath: {options.DbPath}");
     Console.WriteLine($"chunkPath: {options.ChunkPath}");
@@ -39,8 +38,8 @@ public static class NikkeAssetExtractor
         Console.WriteLine("Dry run complete.");
         return;
       }
-      
-      ExtractSprites(chunkMapper.ExtractedFiles, options.OutputDirectory);
+
+      ExtractSprites(chunkMapper.ExtractedFiles, options.OutputDirectory, options.PrefixFilePath);
       Console.WriteLine("Extraction complete.");
     }
     finally
@@ -54,31 +53,37 @@ public static class NikkeAssetExtractor
     }
   }
 
-  public static void ExtractSprites(List<string> extractedFiles, string outputDirectory)
+  public static void ExtractSprites(List<string> extractedFiles, string outputDirectory, string? prefixPath)
   {
     Directory.CreateDirectory(outputDirectory);
     var assetManager = new AssetsManager();
+
+    var prefixes = new Dictionary<string, string>();
+    if (prefixPath != null && File.Exists(prefixPath))
+      prefixes = File.ReadAllLines(prefixPath)
+        .Select(line => line.Split(','))
+        .Where(parts => parts.Length == 2)
+        .ToDictionary(parts => parts[0].Trim(), parts => parts[1].Trim());
+
     foreach (var fileName in extractedFiles)
     {
-      if (!File.Exists(fileName))
-      {
-        continue;
-      }
+      if (!File.Exists(fileName)) continue;
 
       assetManager.Clear();
       assetManager.LoadFiles(fileName);
       var fileInfo = new FileInfo(fileName);
-      var baseName = fileInfo.Name.Split('_')[0];
+      var prefixFolder = prefixes
+        .FirstOrDefault(p => fileInfo.Name.StartsWith(p.Key, StringComparison.OrdinalIgnoreCase)).Value;
+
+      var baseName = prefixFolder ?? fileInfo.Name.Split('_')[0];
 
       foreach (var serializedFile in assetManager.assetsFileList)
+      foreach (var sprite in serializedFile.Objects.Where(it => it.type == ClassIDType.Sprite))
       {
-        foreach (var sprite in serializedFile.Objects.Where(it => it.type == ClassIDType.Sprite))
-        {
-          var assetItem = new AssetItem(sprite);
-          assetItem.Text = ((NamedObject)sprite).m_Name;
-          var outputPath = Path.Combine(outputDirectory, baseName, "Sprite");
-          Exporter.ExportSprite(assetItem, outputPath);
-        }
+        var assetItem = new AssetItem(sprite);
+        assetItem.Text = ((NamedObject)sprite).m_Name;
+        var outputPath = Path.Combine(outputDirectory, baseName, "Sprite");
+        Exporter.ExportSprite(assetItem, outputPath, true);
       }
     }
   }
@@ -190,9 +195,10 @@ public static class NikkeAssetExtractor
     Console.WriteLine("      Run the extraction flow without writing asset files.");
     Console.WriteLine("      Useful with --storeCatalog to inspect available entries.");
     Console.WriteLine();
-    Console.WriteLine("  --prefix, -p <prefix_file_path> <manifest_file_path>");
-    Console.WriteLine("      Path to a file with asset prefixes to include (one prefix per line).");
-    Console.WriteLine("      Example prefix: `icons-char-si(hd)_assets`.");
+    Console.WriteLine("  --prefix, -p <prefix_file_path>");
+    Console.WriteLine(
+      "      Path to a file with asset prefixes to include and output folder of that prefix (csv file).");
+    Console.WriteLine("      Example prefix: `icons-char-si(hd)_assets,nikke`.");
     Console.WriteLine();
     Console.WriteLine("  --storeAsset, -a <asset_output_path>");
     Console.WriteLine("      Save the extracted unity assets to this path.");
