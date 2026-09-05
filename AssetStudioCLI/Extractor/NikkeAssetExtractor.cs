@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using AssetStudioCLI.Extractor.Decrypt;
 
 namespace AssetStudioCLI.Extractor;
@@ -16,16 +17,26 @@ public static class NikkeAssetExtractor
     Console.WriteLine($"outputDirectory: {options.OutputDirectory}");
     Console.WriteLine($"isDryRun: {options.IsDryRun}");
     Console.WriteLine($"prefixFilePath: {options.PrefixFilePath ?? "(null)"}");
-    Console.WriteLine($"manifestFilePath: {options.ManifestFilePath ?? "(null)"}");
     Console.WriteLine($"storeDbOutputPath: {options.StoreDbOutputPath ?? "(null)"}");
     Console.WriteLine($"storeCatalogOutputPath: {options.StoreCatalogOutputPath ?? "(null)"}");
-    
-    Console.WriteLine("Decrypting Nikke database: " + options.DbPath); 
-    var dbFile = NikkeDbDecryptor.DecryptNikkeDatabase(options);
-    Console.WriteLine("Reading chunks from DB");
-    var chunkMapper = new ChunkMapper(options, dbFile);
-    chunkMapper.MapChunks().Wait();
-    Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
+    try
+    {
+      Console.WriteLine("Decrypting Nikke database: " + options.DbPath);
+      var dbFile = NikkeDbDecryptor.DecryptNikkeDatabase(options);
+      Console.WriteLine("Reading chunks from DB");
+      var chunkMapper = new ChunkMapper(options, dbFile);
+      chunkMapper.MapChunks().Wait();
+      Console.WriteLine("Mapped files: " + chunkMapper.FileChunks.Count);
+    }
+    finally
+    {
+      var tmpDirectory = Path.Combine(".", "tmp");
+      if (Directory.Exists(tmpDirectory))
+      {
+        Console.WriteLine("Cleaning up temporary directory.");
+        Directory.Delete(tmpDirectory, true);
+      }
+    }
   }
 
   private static bool TryParseArgs(string[] args, out NikkeExtractorOptions options)
@@ -46,7 +57,6 @@ public static class NikkeAssetExtractor
     // Optional arguments
     var isDryRun = false;
     string? prefixFilePath = null;
-    string? manifestFilePath = null;
     string? storeDbOutputPath = null;
     string? storeCatalogOutputPath = null;
 
@@ -65,11 +75,6 @@ public static class NikkeAssetExtractor
         case "--prefix":
         case "-p":
           if (!TryReadOptionValue(args, ref i, arg, out prefixFilePath)) return false;
-          break;
-
-        case "--manifest":
-        case "-m":
-          if (!TryReadOptionValue(args, ref i, arg, out manifestFilePath)) return false;
           break;
 
         case "--storeDb":
@@ -95,7 +100,6 @@ public static class NikkeAssetExtractor
       OutputDirectory = outputDirectory,
       IsDryRun = isDryRun,
       PrefixFilePath = prefixFilePath,
-      ManifestFilePath = manifestFilePath,
       StoreDbOutputPath = storeDbOutputPath,
       StoreCatalogOutputPath = storeCatalogOutputPath
     };
@@ -135,13 +139,9 @@ public static class NikkeAssetExtractor
     Console.WriteLine("      Run the extraction flow without writing asset files.");
     Console.WriteLine("      Useful with --storeCatalog to inspect available entries.");
     Console.WriteLine();
-    Console.WriteLine("  --prefix, -p <prefix_file_path>");
+    Console.WriteLine("  --prefix, -p <prefix_file_path> <manifest_file_path>");
     Console.WriteLine("      Path to a file with asset prefixes to include (one prefix per line).");
     Console.WriteLine("      Example prefix: `icons-char-si(hd)_assets`.");
-    Console.WriteLine();
-    Console.WriteLine("  --manifest, -m <manifest_file_path>");
-    Console.WriteLine("      Path to a previous manifest.");
-    Console.WriteLine("      Only new or updated assets are extracted (one asset per line).");
     Console.WriteLine();
     Console.WriteLine("  --storeDb, -b <decrypted_db_file_output_path>");
     Console.WriteLine("      Save the decrypted database to this path.");

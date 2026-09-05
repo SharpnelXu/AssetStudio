@@ -32,19 +32,27 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
 
   public async Task MapChunks()
   {
+    var prefixes = new List<string>();
+    if (options.PrefixFilePath != null && File.Exists(options.PrefixFilePath))
+      prefixes = (await File.ReadAllLinesAsync(options.PrefixFilePath))
+        .Select(line => line.Trim())
+        .Where(line => !string.IsNullOrEmpty(line))
+        .ToList();
+
     // Ordered file-key -> ordered chunk list, in the order returned by the query (ORDER BY cfm.file_offset)
     var fileChunks = new Dictionary<string, List<ChunkInfo>>();
 
     var connectionString = new SqliteConnectionStringBuilder
     {
       DataSource = dbFile.FullName,
-      Mode = SqliteOpenMode.ReadOnly
+      Mode = SqliteOpenMode.ReadOnly,
+      Pooling = false // avoid pooled native handle keeping dbFile locked after Close/Dispose
     }.ToString();
 
     await using var connection = new SqliteConnection(connectionString);
     await connection.OpenAsync();
 
-    var command = connection.CreateCommand();
+    await using var command = connection.CreateCommand();
     command.CommandText = NDB_QUERY_COMMAND;
 
     await using var reader = await command.ExecuteReaderAsync();
@@ -56,6 +64,10 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       // NOT the global chunk_id. Chunks are deduplicated/shared across files, so a chunk's global
       // chunk_id does not indicate its position within any particular file - only file_offset does.
       var fileOffset = Convert.ToInt64(reader.GetValue(2));
+
+      var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
+      if (prefix == null && options.StoreCatalogOutputPath == null)
+        continue; // not one of the desired icon assets and don't need to list
 
       // var prefix = prefixes.FirstOrDefault(p => fileKey.StartsWith(p, StringComparison.Ordinal));
       // if (prefix == null) continue; // not one of the desired icon assets
@@ -69,6 +81,8 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
       list.Add(new ChunkInfo { FileOffset = fileOffset, ChunkHash = chunkHash });
     }
 
+    connection.Close();
+
     if (options.StoreCatalogOutputPath != null)
     {
       Directory.CreateDirectory(options.StoreCatalogOutputPath);
@@ -79,13 +93,11 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
     }
 
     foreach (var (fileKey, chunks) in fileChunks)
-    {
       FileChunks[fileKey] = new FileChunkInfo
       {
         FileKey = fileKey,
         Chunks = chunks.OrderBy(c => c.FileOffset).ToList()
       };
-    }
   }
 
   private static string ToHexString(object? value)
@@ -103,7 +115,7 @@ public class ChunkMapper(NikkeExtractorOptions options, FileInfo dbFile)
     public long FileOffset { get; set; }
     public string ChunkHash { get; set; } = "";
   }
-  
+
   public class FileChunkInfo
   {
     public string FileKey { get; set; } = "";

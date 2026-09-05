@@ -9,100 +9,97 @@ namespace AssetStudioCLI.Extractor.Decrypt;
 /**
  * Author: Hiro420 (https://github.com/Hiro420/NikkeTools)
  */
-class NikkeDbDecryptor
+internal class NikkeDbDecryptor
 {
-	public static FileInfo DecryptNikkeDatabase(NikkeExtractorOptions options)
-	{
-		if (!File.Exists(options.DbPath))
-		{
-			throw new FileNotFoundException("Nikke database not found", options.DbPath);
-		}
-		
-		using var fs = new FileStream(options.DbPath, FileMode.Open, FileAccess.Read);
-		using var reader = new BinaryReader(fs);
+  public static FileInfo DecryptNikkeDatabase(NikkeExtractorOptions options)
+  {
+    if (!File.Exists(options.DbPath)) throw new FileNotFoundException("Nikke database not found", options.DbPath);
 
-		var header = new NikkeDatabaseHeader
-		{
-			Magic = reader.ReadBytes(4),
-			Version = ReadUInt32BigEndian(reader),
-			AesKey = reader.ReadBytes(16),
-			SegmentSize = ReadUInt32BigEndian(reader),
-			SegmentCount = ReadUInt32BigEndian(reader)
-		};
+    using var fs = new FileStream(options.DbPath, FileMode.Open, FileAccess.Read);
+    using var reader = new BinaryReader(fs);
 
-		if (!header.Magic.SequenceEqual("NKDB"u8.ToArray()))
-			throw new ArgumentException("Invalid DB header" + header.Magic); // invalid magic
+    var header = new NikkeDatabaseHeader
+    {
+      Magic = reader.ReadBytes(4),
+      Version = ReadUInt32BigEndian(reader),
+      AesKey = reader.ReadBytes(16),
+      SegmentSize = ReadUInt32BigEndian(reader),
+      SegmentCount = ReadUInt32BigEndian(reader)
+    };
 
-		if (header.Version != 1)
-			throw new ArgumentException("Invalid DB version" + header.Version); // invalid version
+    if (!header.Magic.SequenceEqual("NKDB"u8.ToArray()))
+      throw new ArgumentException("Invalid DB header" + header.Magic); // invalid magic
 
-		long ReadOffset()
-		{
-			byte[] offsetBytes = reader.ReadBytes(4);
-			return offsetBytes.Aggregate(0L, (acc, b) => (acc << 8) | b);
-		}
+    if (header.Version != 1)
+      throw new ArgumentException("Invalid DB version" + header.Version); // invalid version
 
-		long currentOffset = ReadOffset();
-		var segments = new (long Offset, long Length, int Index)[header.SegmentCount];
+    long ReadOffset()
+    {
+      var offsetBytes = reader.ReadBytes(4);
+      return offsetBytes.Aggregate(0L, (acc, b) => (acc << 8) | b);
+    }
 
-		for (int i = 0; i < header.SegmentCount; i++)
-		{
-			long nextOffset = ReadOffset();
-			segments[i] = (currentOffset, nextOffset - currentOffset, i);
-			currentOffset = nextOffset;
-		}
+    var currentOffset = ReadOffset();
+    var segments = new (long Offset, long Length, int Index)[header.SegmentCount];
 
-		var outputDirectory = options.StoreDbOutputPath ?? Path.Combine(".", "tmp");
-		Directory.CreateDirectory(outputDirectory);
-		var file = new FileInfo(options.DbPath);
-		var outputFilePath = Path.Combine(outputDirectory, file.Name);
-		using var outputStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
+    for (var i = 0; i < header.SegmentCount; i++)
+    {
+      var nextOffset = ReadOffset();
+      segments[i] = (currentOffset, nextOffset - currentOffset, i);
+      currentOffset = nextOffset;
+    }
 
-		foreach (var (offset, length, index) in segments)
-		{
-			fs.Seek(offset, SeekOrigin.Begin);
-			byte[] segment = reader.ReadBytes((int)length);
+    var outputDirectory = options.StoreDbOutputPath ?? Path.Combine(".", "tmp");
+    Directory.CreateDirectory(outputDirectory);
+    var file = new FileInfo(options.DbPath);
+    var outputFilePath = Path.Combine(outputDirectory, file.Name);
+    using var outputStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write);
 
-			byte[] iv = new byte[16];
-			BitConverter.GetBytes(index).CopyTo(iv, 0);
-			BitConverter.GetBytes((int)offset).CopyTo(iv, 4);
+    foreach (var (offset, length, index) in segments)
+    {
+      fs.Seek(offset, SeekOrigin.Begin);
+      var segment = reader.ReadBytes((int)length);
 
-			byte[] decrypted = DecryptAES_OFB(header.AesKey, iv, segment);
+      var iv = new byte[16];
+      BitConverter.GetBytes(index).CopyTo(iv, 0);
+      BitConverter.GetBytes((int)offset).CopyTo(iv, 4);
 
-			using var ms = new MemoryStream(decrypted);
-			using var zlib = new ZLibStream(ms, CompressionMode.Decompress);
-			zlib.CopyTo(outputStream);
-		}
-		
-		return new FileInfo(outputFilePath);
-	}
+      var decrypted = DecryptAES_OFB(header.AesKey, iv, segment);
 
-	static uint ReadUInt32BigEndian(BinaryReader reader)
-	{
-		byte[] bytes = reader.ReadBytes(4);
-		if (BitConverter.IsLittleEndian)
-			Array.Reverse(bytes);
-		return BitConverter.ToUInt32(bytes, 0);
-	}
+      using var ms = new MemoryStream(decrypted);
+      using var zlib = new ZLibStream(ms, CompressionMode.Decompress);
+      zlib.CopyTo(outputStream);
+    }
 
-	static byte[] DecryptAES_OFB(byte[] key, byte[] iv, byte[] input)
-	{
-		using Aes aes = Aes.Create();
-		aes.Key = key;
-		aes.IV = iv;
-		MemoryStream testVectorStream = new MemoryStream(input);
-		OFBStream testOFBStream = new OFBStream(testVectorStream, aes, CryptoStreamMode.Read);
-		MemoryStream cipherTextStream = new MemoryStream();
-		testOFBStream.CopyTo(cipherTextStream);
-		return cipherTextStream.ToArray();
-	}
+    return new FileInfo(outputFilePath);
+  }
+
+  private static uint ReadUInt32BigEndian(BinaryReader reader)
+  {
+    var bytes = reader.ReadBytes(4);
+    if (BitConverter.IsLittleEndian)
+      Array.Reverse(bytes);
+    return BitConverter.ToUInt32(bytes, 0);
+  }
+
+  private static byte[] DecryptAES_OFB(byte[] key, byte[] iv, byte[] input)
+  {
+    using var aes = Aes.Create();
+    aes.Key = key;
+    aes.IV = iv;
+    var testVectorStream = new MemoryStream(input);
+    var testOFBStream = new OFBStream(testVectorStream, aes, CryptoStreamMode.Read);
+    var cipherTextStream = new MemoryStream();
+    testOFBStream.CopyTo(cipherTextStream);
+    return cipherTextStream.ToArray();
+  }
 }
 
-struct NikkeDatabaseHeader
+internal struct NikkeDatabaseHeader
 {
-	public byte[] Magic;
-	public uint Version;
-	public byte[] AesKey;
-	public uint SegmentSize;
-	public uint SegmentCount;
+  public byte[] Magic;
+  public uint Version;
+  public byte[] AesKey;
+  public uint SegmentSize;
+  public uint SegmentCount;
 }
